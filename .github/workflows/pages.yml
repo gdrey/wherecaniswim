@@ -27,9 +27,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Pull NYC Parks schedules
+      - name: Pull NYC Parks schedules through the public collector
+        env:
+          SWIM_SCHEDULE_FEED_URL: https://wherecaniswim-nyc-prototype.gdrey.chatgpt.site/api/sessions
         run: node scripts/fetch-schedules.mjs
-        continue-on-error: true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
