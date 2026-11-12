@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#5d7f32">
+  <meta name="description" content="Find swim sessions across NYC Parks indoor pools, directly from official schedules.">
+  <title>WhereCanISwim — NYC indoor pool schedules</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="utility-bar"><div class="utility-inner"><span>NYC SWIM GUIDE</span><span>Independent schedule finder</span></div></div>
+  <div class="shell">
+    <header class="site-header">
+      <a class="wordmark" href="./">WhereCanISwim<span class="mark-dot">.</span></a>
+      <span class="header-label">Find a place to swim in New York City</span>
+    </header>
+    <div class="section-nav"><strong>INDOOR POOL SCHEDULES</strong><a href="https://www.nycgovparks.org/facilities/indoor-pools" target="_blank" rel="noopener noreferrer">NYC Parks pool directory ↗</a></div>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div class="intro-top"><span class="kicker">ACTIVITIES AND FACILITIES / INDOOR POOLS</span><span class="week-label" id="week-label">Next 7 days</span></div>
+        <h1 id="page-title">Find a time to swim.</h1>
+        <p>Browse upcoming sessions from NYC Parks indoor pools. Choose an activity, day, or favorite pool to narrow the calendar.</p>
+        <div class="intro-meta"><time class="current-time" id="current-time">Checking New York time…</time><div class="source-status" id="source-status" role="status" aria-live="polite"><span class="status-dot loading"></span><span>Checking NYC Parks schedules…</span></div></div>
+      </section>
+
+      <section class="calendar" aria-label="Swim session calendar">
+        <div class="filter-bar">
+          <div class="filter-title"><strong>Filter sessions</strong><button id="clear-filters" class="clear-button" type="button">Reset</button></div>
+          <div class="filters">
+            <fieldset class="filter-group"><legend>Activity</legend><div class="chip-row" id="activity-options"></div></fieldset>
+            <fieldset class="filter-group"><legend>Day</legend><div class="chip-row scroll-row" id="day-options"></div></fieldset>
+            <fieldset class="filter-group"><legend>Favorites</legend><div class="favorites-control"><div class="chip-row" id="favorite-mode-options"></div><details class="favorites-picker"><summary>Choose favorite pools</summary><div id="favorite-options" class="favorite-options"></div></details></div></fieldset>
+            <fieldset class="filter-group"><legend>Pool</legend><div class="chip-row scroll-row" id="pool-options"></div></fieldset>
+          </div>
+        </div>
+        <div class="results-header"><strong id="result-count">Loading sessions…</strong><span class="color-legend"><b class="am-key">AM</b><b class="pm-key">PM</b><b class="past-key">Past</b></span><span>Times shown in New York local time</span><span class="calendar-scroll-hint">Scroll days →</span></div>
+        <div id="results" aria-live="polite"></div>
+        <div class="error" id="error" hidden><strong>Schedules are temporarily unavailable.</strong><p>Check the official NYC Parks indoor pools directory and try this page again later.</p><div id="error-links"></div></div>
+        <details class="coverage" id="coverage" hidden><summary id="coverage-summary">Pool coverage</summary><div id="coverage-list" class="coverage-list"></div></details>
+      </section>
+
+      <aside class="notice"><strong>Before you go</strong><p>NYC Parks may change or cancel sessions. Check the linked official schedule for the latest details. Indoor pools may require recreation center membership.</p></aside>
+    </main>
+    <footer><span>WhereCanISwim is an independent project, not affiliated with NYC Parks.</span><span>Schedules from <a href="https://www.nycgovparks.org/facilities/indoor-pools" target="_blank" rel="noopener noreferrer">NYC Parks ↗</a></span></footer>
+  </div>
+</body>
+</html>
