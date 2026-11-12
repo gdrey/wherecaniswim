@@ -159,7 +159,7 @@ function renderStatus() {
   const status = $("source-status");
   const outdated = currentNYCClock().date > data.window_start;
   status.className = `source-status${data.errors.length || data.stale || outdated ? " warning" : ""}`;
-  status.replaceChildren(el("span", "status-dot"), el("span", "", `Last checked ${checked} · ${data.pools.length} pools listed · ${withSessions} with sessions · ${closed} closed${outdated ? " · awaiting today's refresh" : data.errors.length || data.stale ? " · some schedules could not be checked" : ""}`));
+  status.replaceChildren(el("span", "status-dot"), el("span", "", `Last successful check ${checked} · ${data.pools.length} pools listed · ${withSessions} with sessions · ${closed} closed${outdated ? " · awaiting today's refresh" : data.errors.length || data.stale ? " · some schedules could not be checked" : ""}`));
   $("week-label").textContent = `${formatDate(data.window_start)} – ${formatDate(data.window_end)}`;
 }
 
