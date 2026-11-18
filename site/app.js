@@ -52,6 +52,12 @@ function datesInWindow(start, end) {
   while (current <= last) { dates.push(current.toISOString().slice(0, 10)); current.setUTCDate(current.getUTCDate() + 1); }
   return dates;
 }
+function calendarDates(start = currentNYCClock().date) {
+  const first = new Date(`${start}T12:00:00Z`);
+  const last = new Date(first);
+  last.setUTCDate(first.getUTCDate() + 6);
+  return datesInWindow(start, last.toISOString().slice(0, 10));
+}
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; }
 
 function setOptions(id, key, options) {
@@ -74,7 +80,7 @@ function setOptions(id, key, options) {
 
 function renderFilters() {
   const data = dataState.data;
-  const dates = datesInWindow(data.window_start, data.window_end);
+  const dates = calendarDates();
   setOptions("activity-options", "activity", [["adult", "Adult swim"], ["lap", "Lap swim"], ["open", "Open swim"], ["all", "All types"]]);
   setOptions("day-options", "day", [["all", "Any day"], ...dates.map(date => [date, formatShortDate(date)])]);
   setOptions("favorite-mode-options", "favoriteMode", [["all", "All pools"], ["only", `★ My favorites (${dataState.favorites.size})`]]);
@@ -133,7 +139,7 @@ function renderResults(clock = currentNYCClock()) {
     results.append(el("p", "", "Choose at least one favorite pool to see its sessions."));
     return;
   }
-  const dates = dataState.day === "all" ? datesInWindow(dataState.data.window_start, dataState.data.window_end) : [dataState.day];
+  const dates = dataState.day === "all" ? calendarDates(clock.date) : [dataState.day];
   results.className = `calendar-grid${dates.length === 1 ? " single-day" : ""}`;
   for (const date of dates) {
     const daySessions = sessions.filter(session => session.date === date);
@@ -160,7 +166,8 @@ function renderStatus() {
   const outdated = currentNYCClock().date > data.window_start;
   status.className = `source-status${data.errors.length || data.stale || outdated ? " warning" : ""}`;
   status.replaceChildren(el("span", "status-dot"), el("span", "", `Last successful check ${checked} · ${data.pools.length} pools listed · ${withSessions} with sessions · ${closed} closed${outdated ? " · awaiting today's refresh" : data.errors.length || data.stale ? " · some schedules could not be checked" : ""}`));
-  $("week-label").textContent = `${formatDate(data.window_start)} – ${formatDate(data.window_end)}`;
+  const dates = calendarDates();
+  $("week-label").textContent = `${formatDate(dates[0])} – ${formatDate(dates[6])}`;
 }
 
 function renderCoverage() {
@@ -194,7 +201,7 @@ async function loadSchedules() {
     const data = await response.json();
     if (!Array.isArray(data.pools) || !Array.isArray(data.sessions)) throw new Error("Invalid schedule data");
     dataState.data = data;
-    if (dataState.day !== "all" && (dataState.day < dataState.data.window_start || dataState.day > dataState.data.window_end)) dataState.day = "all";
+    if (dataState.day !== "all" && !calendarDates().includes(dataState.day)) dataState.day = "all";
     $("error").hidden = true;
     renderStatus(); renderFilters(); renderResults(); renderCoverage();
   } catch {
@@ -217,9 +224,15 @@ $("clear-filters").addEventListener("click", () => {
   if (dataState.data) { renderFilters(); renderResults(); }
 });
 renderCurrentTime(currentNYCClock());
+let renderedCalendarDate = currentNYCClock().date;
 function refreshClockAndSessions() {
   const clock = currentNYCClock();
   renderCurrentTime(clock);
+  if (clock.date !== renderedCalendarDate) {
+    renderedCalendarDate = clock.date;
+    dataState.day = "all";
+    if (dataState.data) { renderStatus(); renderFilters(); }
+  }
   if (dataState.data) renderResults(clock);
   if (Date.now() - lastDataFetchAt >= 20 * 60_000) loadSchedules();
 }
