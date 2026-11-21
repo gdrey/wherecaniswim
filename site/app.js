@@ -135,11 +135,43 @@ function renderSession(session, clock) {
   return link;
 }
 
+const TIMELINE_START = 6 * 60;
+const TIMELINE_END = 22 * 60;
+const PIXELS_PER_MINUTE = 1;
+function minutes(time) { const [hour, minute] = time.split(":").map(Number); return hour * 60 + minute; }
+
+function placeOverlappingSessions(sessions) {
+  const ordered = [...sessions].sort((a, b) => a.start_time.localeCompare(b.start_time) || a.end_time.localeCompare(b.end_time));
+  const groups = [];
+  let group = [];
+  let groupEnd = -1;
+  for (const session of ordered) {
+    const start = minutes(session.start_time);
+    if (group.length && start >= groupEnd) { groups.push(group); group = []; groupEnd = -1; }
+    group.push(session);
+    groupEnd = Math.max(groupEnd, minutes(session.end_time));
+  }
+  if (group.length) groups.push(group);
+  return groups.flatMap(items => {
+    const laneEnds = [];
+    const placements = items.map(session => {
+      const start = minutes(session.start_time);
+      let lane = laneEnds.findIndex(end => end <= start);
+      if (lane < 0) lane = laneEnds.length;
+      laneEnds[lane] = minutes(session.end_time);
+      return { session, lane };
+    });
+    return placements.map(({ session, lane }) => ({ session, lane, lanes: laneEnds.length }));
+  });
+}
+
 function renderResults(clock = currentNYCClock()) {
   renderCurrentTime(clock);
   const dates = dataState.day === "all" ? calendarDates(clock.date) : [dataState.day];
   const current = schedulesAreCurrent(clock);
   const sessions = current ? visibleSessions().filter(session => dates.includes(session.date)) : [];
+  const timelineStart = Math.min(TIMELINE_START, ...sessions.map(session => Math.floor(minutes(session.start_time) / 60) * 60));
+  const timelineEnd = Math.max(TIMELINE_END, ...sessions.map(session => Math.ceil(minutes(session.end_time) / 60) * 60));
   $("result-count").textContent = current ? `${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}` : "Schedules need a new check";
   const results = $("results");
   results.replaceChildren();
@@ -148,7 +180,18 @@ function renderResults(clock = currentNYCClock()) {
     results.append(el("p", "", "Choose at least one favorite pool to see its sessions."));
     return;
   }
-  results.className = `calendar-grid${dates.length === 1 ? " single-day" : ""}`;
+  results.className = `calendar-grid timeline-grid${dates.length === 1 ? " single-day" : ""}`;
+  const ruler = el("div", "timeline-ruler");
+  ruler.append(el("div", "timeline-ruler-head", "NYC time"));
+  const ticks = el("div", "timeline-ruler-body");
+  ticks.style.height = `${(timelineEnd - timelineStart) * PIXELS_PER_MINUTE}px`;
+  for (let hour = timelineStart / 60; hour <= timelineEnd / 60; hour++) {
+    const tick = el("span", "timeline-tick", formatTime(`${String(hour).padStart(2, "0")}:00`));
+    tick.style.top = `${(hour * 60 - timelineStart) * PIXELS_PER_MINUTE}px`;
+    ticks.append(tick);
+  }
+  ruler.append(ticks);
+  results.append(ruler);
   for (const date of dates) {
     const daySessions = sessions.filter(session => session.date === date);
     const column = el("section", `calendar-day${date < clock.date ? " is-past" : ""}`);
@@ -157,9 +200,21 @@ function renderResults(clock = currentNYCClock()) {
     const dayName = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long" }).format(new Date(`${date}T12:00:00Z`));
     header.append(el("strong", "", dayName), el("span", "", new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" }).format(new Date(`${date}T12:00:00Z`))));
     column.append(header);
-    const body = el("div", "calendar-day-body");
-    if (daySessions.length) body.append(...daySessions.map(session => renderSession(session, clock)));
-    else body.append(el("p", "calendar-no-session", current ? "No matching sessions" : "Schedule not verified"));
+    const body = el("div", "calendar-day-body timeline-day-body");
+    body.style.height = `${(timelineEnd - timelineStart) * PIXELS_PER_MINUTE}px`;
+    if (daySessions.length) {
+      for (const { session, lane, lanes } of placeOverlappingSessions(daySessions)) {
+        const card = renderSession(session, clock);
+        const top = (minutes(session.start_time) - timelineStart) * PIXELS_PER_MINUTE;
+        const height = (minutes(session.end_time) - minutes(session.start_time)) * PIXELS_PER_MINUTE;
+        card.style.top = `${top}px`;
+        card.style.height = `${height}px`;
+        card.style.left = `calc(${lane * 100 / lanes}% + 3px)`;
+        card.style.width = `calc(${100 / lanes}% - 6px)`;
+        if (height < 65 || lanes > 2) card.classList.add("compact-session");
+        body.append(card);
+      }
+    } else body.append(el("p", "calendar-no-session", current ? "No matching sessions" : "Schedule not verified"));
     column.append(body);
     results.append(column);
   }
