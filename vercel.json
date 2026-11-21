@@ -2,6 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "",
-  "buildCommand": "SWIM_SCHEDULE_FEED_URL=https://wherecaniswim-nyc-prototype.gdrey.chatgpt.site/api/sessions node scripts/fetch-schedules.mjs",
+  "buildCommand": "true",
   "outputDirectory": "site"
 }

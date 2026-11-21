@@ -1,4 +1,5 @@
 const FAVORITES_KEY = "wherecaniswim.favoritePools.v1";
+const LIVE_FEED_URL = "https://wherecaniswim-nyc-prototype.gdrey.chatgpt.site/api/sessions";
 const DEFAULT_FAVORITES = ["M260", "B245", "X045"];
 const SHORT_NAMES = { M164: "Asser Levy", M260: "Chelsea", M130: "Constance Baker Motley", M063: "Gertrude Ederle", M131: "Hansborough", M103: "Tony Dapolito", B270: "Brownsville", B085: "Metropolitan", B250: "Shirley Chisholm", B245: "St. John's", Q099: "Flushing Meadows", Q448: "Roy Wilkins", X045: "St. Mary's" };
 function savedFavorites() {
@@ -111,6 +112,12 @@ function visibleSessions() {
   );
 }
 
+function schedulesAreCurrent(clock = currentNYCClock()) {
+  const data = dataState.data;
+  const checkedAt = Date.parse(data.checked_at);
+  return !data.stale && Number.isFinite(checkedAt) && clock.instant.getTime() - checkedAt < 24 * 60 * 60_000 && data.window_start <= clock.date && data.window_end >= calendarDates(clock.date)[6];
+}
+
 function renderSession(session, clock) {
   const past = sessionIsPast(session, clock);
   const link = el("a", `calendar-session${past ? " is-past" : ""}`);
@@ -130,8 +137,10 @@ function renderSession(session, clock) {
 
 function renderResults(clock = currentNYCClock()) {
   renderCurrentTime(clock);
-  const sessions = visibleSessions();
-  $("result-count").textContent = `${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`;
+  const dates = dataState.day === "all" ? calendarDates(clock.date) : [dataState.day];
+  const current = schedulesAreCurrent(clock);
+  const sessions = current ? visibleSessions().filter(session => dates.includes(session.date)) : [];
+  $("result-count").textContent = current ? `${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}` : "Schedules need a new check";
   const results = $("results");
   results.replaceChildren();
   if (dataState.favoriteMode === "only" && dataState.favorites.size === 0) {
@@ -139,7 +148,6 @@ function renderResults(clock = currentNYCClock()) {
     results.append(el("p", "", "Choose at least one favorite pool to see its sessions."));
     return;
   }
-  const dates = dataState.day === "all" ? calendarDates(clock.date) : [dataState.day];
   results.className = `calendar-grid${dates.length === 1 ? " single-day" : ""}`;
   for (const date of dates) {
     const daySessions = sessions.filter(session => session.date === date);
@@ -151,7 +159,7 @@ function renderResults(clock = currentNYCClock()) {
     column.append(header);
     const body = el("div", "calendar-day-body");
     if (daySessions.length) body.append(...daySessions.map(session => renderSession(session, clock)));
-    else body.append(el("p", "calendar-no-session", "No matching sessions"));
+    else body.append(el("p", "calendar-no-session", current ? "No matching sessions" : "Schedule not verified"));
     column.append(body);
     results.append(column);
   }
@@ -163,9 +171,9 @@ function renderStatus() {
   const withSessions = data.pools.filter(pool => pool.session_count > 0).length;
   const closed = data.pools.filter(pool => pool.status === "closed").length;
   const status = $("source-status");
-  const outdated = currentNYCClock().date > data.window_start;
-  status.className = `source-status${data.errors.length || data.stale || outdated ? " warning" : ""}`;
-  status.replaceChildren(el("span", "status-dot"), el("span", "", `Last successful check ${checked} · ${data.pools.length} pools listed · ${withSessions} with sessions · ${closed} closed${outdated ? " · awaiting today's refresh" : data.errors.length || data.stale ? " · some schedules could not be checked" : ""}`));
+  const outdated = !schedulesAreCurrent();
+  status.className = `source-status${data.errors.length || outdated ? " warning" : ""}`;
+  status.replaceChildren(el("span", "status-dot"), el("span", "", `Last successful check ${checked} · ${data.pools.length} pools listed · ${withSessions} with sessions · ${closed} closed${outdated ? " · current schedules unavailable" : data.errors.length ? " · some schedules could not be checked" : ""}`));
   const dates = calendarDates();
   $("week-label").textContent = `${formatDate(dates[0])} – ${formatDate(dates[6])}`;
 }
@@ -200,12 +208,12 @@ async function loadSchedules() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.pools) || !Array.isArray(data.sessions)) throw new Error("Invalid schedule data");
-    dataState.data = data;
+    dataState.data = { ...data, stale: true };
     if (dataState.day !== "all" && !calendarDates().includes(dataState.day)) dataState.day = "all";
     $("error").hidden = true;
     renderStatus(); renderFilters(); renderResults(); renderCoverage();
   } catch {
-    if (dataState.data) { dataState.data.stale = true; renderStatus(); return; }
+    if (dataState.data) { dataState.data.stale = true; renderStatus(); renderResults(); return; }
     $("source-status").className = "source-status error-status";
     $("source-status").replaceChildren(el("span", "status-dot"), el("span", "", "Could not load published schedules"));
     $("result-count").textContent = "No live data";
@@ -215,7 +223,22 @@ async function loadSchedules() {
     a.href = "https://www.nycgovparks.org/facilities/indoor-pools";
     a.target = "_blank"; a.rel = "noopener noreferrer"; links.append(a);
   } finally {
-    loadingSchedules = false;
+    // The saved file is a fallback. Ask the public official-source collector on every load.
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60_000);
+      let response;
+      try { response = await fetch(LIVE_FEED_URL, { cache: "no-store", signal: controller.signal }); }
+      finally { clearTimeout(timeout); }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data.pools) || !Array.isArray(data.sessions) || !data.checked_at) throw new Error("Invalid schedule data");
+      dataState.data = data;
+      $("error").hidden = true;
+      renderStatus(); renderFilters(); renderResults(); renderCoverage();
+    } catch {
+      if (dataState.data) { dataState.data.stale = true; renderStatus(); renderResults(); }
+    } finally { loadingSchedules = false; }
   }
 }
 
