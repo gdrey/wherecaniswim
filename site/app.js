@@ -9,7 +9,7 @@ function savedFavorites() {
   } catch { /* Browser storage may be unavailable. */ }
   return new Set(DEFAULT_FAVORITES);
 }
-const dataState = { data: null, day: "all", activity: "adult", pool: "all", favoriteMode: "all", favorites: savedFavorites() };
+const dataState = { data: null, day: "all", activity: "adult", pool: "all", favoriteMode: "only", favorites: savedFavorites() };
 let lastDataFetchAt = 0;
 let loadingSchedules = false;
 const $ = id => document.getElementById(id);
@@ -243,7 +243,7 @@ async function loadSchedules() {
 }
 
 $("clear-filters").addEventListener("click", () => {
-  dataState.day = "all"; dataState.activity = "adult"; dataState.pool = "all"; dataState.favoriteMode = "all";
+  dataState.day = "all"; dataState.activity = "adult"; dataState.pool = "all"; dataState.favoriteMode = "only";
   if (dataState.data) { renderFilters(); renderResults(); }
 });
 renderCurrentTime(currentNYCClock());
