@@ -159,15 +159,16 @@ footer a{color:#4f6f2d;text-decoration:underline}
 .timeline-grid.single-day{grid-template-columns:54px minmax(280px,620px);justify-content:start}
 .timeline-ruler{position:sticky;left:0;z-index:3;background:#fff;border-right:1px solid #cbd5c1}
 .timeline-ruler-head{height:60px;display:flex;align-items:center;justify-content:center;background:#eef2e7;border-bottom:1px solid #cbd5c1;color:#4f6f2d;font-size:10px;font-weight:800}
-.timeline-ruler-body{position:relative;height:960px;background:repeating-linear-gradient(to bottom,#fff 0,#fff 59px,#d9ded7 59px,#d9ded7 60px)}
+.timeline-ruler-body{position:relative;height:576px;background:repeating-linear-gradient(to bottom,#fff 0,#fff 35px,#d9ded7 35px,#d9ded7 36px)}
 .timeline-tick{position:absolute;right:5px;transform:translateY(-50%);padding:1px 2px;background:#fff;color:#66716b;font-size:10px;font-weight:650;white-space:nowrap;font-variant-numeric:tabular-nums}
 .timeline-tick:first-child{transform:none}
 .timeline-tick:last-child{transform:translateY(-100%)}
-.timeline-day-body{position:relative;display:block;padding:0;min-height:0;background:repeating-linear-gradient(to bottom,#fff 0,#fff 59px,#e0e6dd 59px,#e0e6dd 60px)}
-.timeline-day-body .calendar-session{position:absolute;display:flex;gap:1px;overflow:hidden;padding:5px 6px;border-radius:7px;box-shadow:0 1px 2px rgba(22,38,24,.08);line-height:1.1}
+.timeline-day-body{position:relative;display:block;padding:0;min-height:0;background:repeating-linear-gradient(to bottom,#fff 0,#fff 35px,#e0e6dd 35px,#e0e6dd 36px)}
+.timeline-day-body .calendar-session{position:absolute;display:flex;gap:0;overflow:hidden;padding:3px 5px;border-radius:7px;box-shadow:0 1px 2px rgba(22,38,24,.08);line-height:1.1}
 .timeline-day-body .calendar-session:hover,.timeline-day-body .calendar-session:focus-visible{z-index:2;overflow:visible;min-height:75px;box-shadow:0 4px 12px rgba(22,38,24,.18)}
 .timeline-day-body .calendar-time{font-size:10px}
 .timeline-day-body .calendar-pool{font-size:12px;line-height:1.08}
+.timeline-day-body .compact-session .calendar-pool{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .timeline-day-body .calendar-activity{font-size:9px}
 .timeline-day-body .calendar-location{font-size:9px;margin-top:0}
 .timeline-day-body .compact-session .calendar-activity,.timeline-day-body .compact-session .calendar-location{display:none}

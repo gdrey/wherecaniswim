@@ -146,7 +146,7 @@ function renderSession(session, clock) {
 
 const TIMELINE_START = 6 * 60;
 const TIMELINE_END = 22 * 60;
-const PIXELS_PER_MINUTE = 1;
+const PIXELS_PER_MINUTE = 0.6;
 function minutes(time) { const [hour, minute] = time.split(":").map(Number); return hour * 60 + minute; }
 
 function placeOverlappingSessions(sessions) {
