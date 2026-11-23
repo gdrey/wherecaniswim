@@ -175,3 +175,7 @@ footer a{color:#4f6f2d;text-decoration:underline}
 .timeline-day-body .calendar-no-session{margin:14px 8px}
 .results-header{min-width:0}
 @media(max-width:760px){.timeline-grid{grid-template-columns:48px repeat(7,280px)}.timeline-grid.single-day{grid-template-columns:48px minmax(280px,1fr)}}
+.refresh-button{border:1px solid #5d7f32;border-radius:6px;background:#fff;color:#4f6f2d;padding:6px 11px;font:inherit;font-size:12px;font-weight:750;cursor:pointer}
+.refresh-button:hover{background:#eef2e7}
+.refresh-button:disabled{opacity:.6;cursor:wait}
+.refresh-message{color:#695824;font-size:12px}

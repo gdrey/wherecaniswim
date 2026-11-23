@@ -1,10 +1,10 @@
-name: Refresh schedules and publish
+name: Refresh schedules daily and publish
 
 on:
   push:
     branches: [main]
   schedule:
-    - cron: "17 */4 * * *"
+    - cron: "17 11 * * *"
   workflow_dispatch:
 
 permissions:

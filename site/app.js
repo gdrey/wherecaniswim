@@ -1,6 +1,7 @@
 const FAVORITES_KEY = "wherecaniswim.favoritePools.v1";
 const SCHEDULE_CACHE_KEY = "wherecaniswim.lastSuccessfulSchedules.v1";
 const LIVE_FEED_URL = "https://wherecaniswim-nyc-prototype.gdrey.chatgpt.site/api/sessions";
+const DAILY_FEED_URL = "https://www.gadidreyfuss.com/wherecaniswim/data/schedules.json";
 const DEFAULT_FAVORITES = ["M260", "B245", "X045"];
 const SHORT_NAMES = { M164: "Asser Levy", M260: "Chelsea", M130: "Constance Baker Motley", M063: "Gertrude Ederle", M131: "Hansborough", M103: "Tony Dapolito", B270: "Brownsville", B085: "Metropolitan", B250: "Shirley Chisholm", B245: "St. John's", Q099: "Flushing Meadows", Q448: "Roy Wilkins", X045: "St. Mary's" };
 function savedFavorites() {
@@ -119,12 +120,13 @@ function scheduleDataIsValid(data) {
 }
 
 function showScheduleData(data) {
-  if (!scheduleDataIsValid(data)) return;
-  if (dataState.data && Date.parse(data.checked_at) < Date.parse(dataState.data.checked_at)) return;
+  if (!scheduleDataIsValid(data)) return false;
+  if (dataState.data && Date.parse(data.checked_at) < Date.parse(dataState.data.checked_at)) return false;
   dataState.data = data;
   if (dataState.day !== "all" && !calendarDates().includes(dataState.day)) dataState.day = "all";
   $("error").hidden = true;
   renderStatus(); renderFilters(); renderResults(); renderCoverage();
+  return true;
 }
 
 function renderSession(session, clock) {
@@ -268,6 +270,29 @@ function renderCoverage() {
   }
 }
 
+async function fetchScheduleJson(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!scheduleDataIsValid(data) || data.stale) throw new Error("No new schedule check was available");
+    return data;
+  } finally { clearTimeout(timeout); }
+}
+
+function showUnavailable() {
+  $("source-status").className = "source-status error-status";
+  $("source-status").replaceChildren(el("span", "status-dot"), el("span", "", "Could not load published schedules"));
+  $("result-count").textContent = "No schedule data";
+  $("error").hidden = false;
+  const a = el("a", "", "NYC Parks indoor pools ↗");
+  a.href = "https://www.nycgovparks.org/facilities/indoor-pools";
+  a.target = "_blank"; a.rel = "noopener noreferrer";
+  $("error-links").replaceChildren(a);
+}
+
 async function loadSchedules() {
   if (loadingSchedules) return;
   loadingSchedules = true;
@@ -281,32 +306,41 @@ async function loadSchedules() {
     try { showScheduleData(JSON.parse(localStorage.getItem(SCHEDULE_CACHE_KEY))); } catch { /* Browser storage may be unavailable. */ }
   }
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60_000);
-    let response;
-    try { response = await fetch(LIVE_FEED_URL, { cache: "no-store", signal: controller.signal }); }
-    finally { clearTimeout(timeout); }
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    if (!scheduleDataIsValid(data) || data.stale) throw new Error("Collector did not return a fresh check");
+    const data = await fetchScheduleJson(DAILY_FEED_URL, 15_000);
     dataState.refreshFailed = false;
-    showScheduleData(data);
-    try { localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify(data)); } catch { /* Keep schedules for this visit. */ }
+    if (showScheduleData(data)) try { localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify(data)); } catch { /* Keep schedules for this visit. */ }
+    else if (dataState.data) renderStatus();
   } catch {
     dataState.refreshFailed = true;
     if (dataState.data) renderStatus();
-    else {
-      $("source-status").className = "source-status error-status";
-      $("source-status").replaceChildren(el("span", "status-dot"), el("span", "", "Could not load published schedules"));
-      $("result-count").textContent = "No schedule data";
-      $("error").hidden = false;
-      const a = el("a", "", "NYC Parks indoor pools ↗");
-      a.href = "https://www.nycgovparks.org/facilities/indoor-pools";
-      a.target = "_blank"; a.rel = "noopener noreferrer";
-      $("error-links").replaceChildren(a);
-    }
+    else showUnavailable();
   } finally { loadingSchedules = false; }
 }
+
+async function refreshSchedules() {
+  const button = $("refresh-schedules");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = "Checking…";
+  $("refresh-message").textContent = "Checking NYC Parks now. This may take up to two minutes.";
+  try {
+    const data = await fetchScheduleJson(`${LIVE_FEED_URL}?refresh=1`, 120_000);
+    dataState.refreshFailed = false;
+    if (showScheduleData(data)) try { localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify(data)); } catch { /* Keep schedules for this visit. */ }
+    else if (dataState.data) renderStatus();
+    $("refresh-message").textContent = data.refresh_skipped ? "A check just ran; showing its result." : data.errors.length ? `Checked, with ${data.errors.length} source errors. Check official schedules.` : "Checked NYC Parks schedules just now.";
+  } catch {
+    dataState.refreshFailed = true;
+    if (dataState.data) renderStatus();
+    else showUnavailable();
+    $("refresh-message").textContent = "Could not check NYC Parks right now. Showing the last saved schedules.";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Refresh schedules";
+  }
+}
+
+$("refresh-schedules").addEventListener("click", refreshSchedules);
 
 $("clear-filters").addEventListener("click", () => {
   dataState.day = "all"; dataState.activity = "adult"; dataState.pool = "all"; dataState.favoriteMode = "only";
