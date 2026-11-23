@@ -1,4 +1,5 @@
 const FAVORITES_KEY = "wherecaniswim.favoritePools.v1";
+const SCHEDULE_CACHE_KEY = "wherecaniswim.lastSuccessfulSchedules.v1";
 const LIVE_FEED_URL = "https://wherecaniswim-nyc-prototype.gdrey.chatgpt.site/api/sessions";
 const DEFAULT_FAVORITES = ["M260", "B245", "X045"];
 const SHORT_NAMES = { M164: "Asser Levy", M260: "Chelsea", M130: "Constance Baker Motley", M063: "Gertrude Ederle", M131: "Hansborough", M103: "Tony Dapolito", B270: "Brownsville", B085: "Metropolitan", B250: "Shirley Chisholm", B245: "St. John's", Q099: "Flushing Meadows", Q448: "Roy Wilkins", X045: "St. Mary's" };
@@ -9,7 +10,7 @@ function savedFavorites() {
   } catch { /* Browser storage may be unavailable. */ }
   return new Set(DEFAULT_FAVORITES);
 }
-const dataState = { data: null, day: "all", activity: "adult", pool: "all", favoriteMode: "only", favorites: savedFavorites() };
+const dataState = { data: null, day: "all", activity: "adult", pool: "all", favoriteMode: "only", favorites: savedFavorites(), refreshFailed: false };
 let lastDataFetchAt = 0;
 let loadingSchedules = false;
 const $ = id => document.getElementById(id);
@@ -112,10 +113,18 @@ function visibleSessions() {
   );
 }
 
-function schedulesAreCurrent(clock = currentNYCClock()) {
-  const data = dataState.data;
-  const checkedAt = Date.parse(data.checked_at);
-  return !data.stale && Number.isFinite(checkedAt) && clock.instant.getTime() - checkedAt < 24 * 60 * 60_000 && data.window_start <= clock.date && data.window_end >= calendarDates(clock.date)[6];
+function scheduleDataIsValid(data) {
+  return data && Array.isArray(data.pools) && Array.isArray(data.sessions) && Array.isArray(data.errors) &&
+    Number.isFinite(Date.parse(data.checked_at)) && /^\d{4}-\d{2}-\d{2}$/.test(data.window_start) && /^\d{4}-\d{2}-\d{2}$/.test(data.window_end);
+}
+
+function showScheduleData(data) {
+  if (!scheduleDataIsValid(data)) return;
+  if (dataState.data && Date.parse(data.checked_at) < Date.parse(dataState.data.checked_at)) return;
+  dataState.data = data;
+  if (dataState.day !== "all" && !calendarDates().includes(dataState.day)) dataState.day = "all";
+  $("error").hidden = true;
+  renderStatus(); renderFilters(); renderResults(); renderCoverage();
 }
 
 function renderSession(session, clock) {
@@ -168,11 +177,11 @@ function placeOverlappingSessions(sessions) {
 function renderResults(clock = currentNYCClock()) {
   renderCurrentTime(clock);
   const dates = dataState.day === "all" ? calendarDates(clock.date) : [dataState.day];
-  const current = schedulesAreCurrent(clock);
-  const sessions = current ? visibleSessions().filter(session => dates.includes(session.date)) : [];
+  const data = dataState.data;
+  const sessions = visibleSessions().filter(session => dates.includes(session.date) && session.date >= data.window_start && session.date <= data.window_end);
   const timelineStart = Math.min(TIMELINE_START, ...sessions.map(session => Math.floor(minutes(session.start_time) / 60) * 60));
   const timelineEnd = Math.max(TIMELINE_END, ...sessions.map(session => Math.ceil(minutes(session.end_time) / 60) * 60));
-  $("result-count").textContent = current ? `${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}` : "Schedules need a new check";
+  $("result-count").textContent = `${sessions.length} ${sessions.length === 1 ? "session" : "sessions"} in last check`;
   const results = $("results");
   results.replaceChildren();
   if (dataState.favoriteMode === "only" && dataState.favorites.size === 0) {
@@ -214,7 +223,10 @@ function renderResults(clock = currentNYCClock()) {
         if (height < 65 || lanes > 2) card.classList.add("compact-session");
         body.append(card);
       }
-    } else body.append(el("p", "calendar-no-session", current ? "No matching sessions" : "Schedule not verified"));
+    } else {
+      const covered = date >= data.window_start && date <= data.window_end;
+      body.append(el("p", "calendar-no-session", covered ? "No matching sessions in last check" : "Not covered by last check"));
+    }
     column.append(body);
     results.append(column);
   }
@@ -226,9 +238,11 @@ function renderStatus() {
   const withSessions = data.pools.filter(pool => pool.session_count > 0).length;
   const closed = data.pools.filter(pool => pool.status === "closed").length;
   const status = $("source-status");
-  const outdated = !schedulesAreCurrent();
-  status.className = `source-status${data.errors.length || outdated ? " warning" : ""}`;
-  status.replaceChildren(el("span", "status-dot"), el("span", "", `Last successful check ${checked} · ${data.pools.length} pools listed · ${withSessions} with sessions · ${closed} closed${outdated ? " · current schedules unavailable" : data.errors.length ? " · some schedules could not be checked" : ""}`));
+  const old = Date.now() - Date.parse(data.checked_at) >= 24 * 60 * 60_000;
+  const warning = dataState.refreshFailed || data.stale || old || data.errors.length > 0;
+  status.className = `source-status${warning ? " warning" : ""}`;
+  const note = dataState.refreshFailed || data.stale ? " · latest refresh failed; showing last checked schedules" : old ? " · check official schedules before visiting" : data.errors.length ? " · some pools could not be checked" : "";
+  status.replaceChildren(el("span", "status-dot"), el("span", "", `Last successful check ${checked} · ${data.pools.length} pools listed · ${withSessions} with sessions · ${closed} closed${note}`));
   const dates = calendarDates();
   $("week-label").textContent = `${formatDate(dates[0])} – ${formatDate(dates[6])}`;
 }
@@ -258,43 +272,40 @@ async function loadSchedules() {
   if (loadingSchedules) return;
   loadingSchedules = true;
   lastDataFetchAt = Date.now();
+  if (!dataState.data) {
+    try {
+      const response = await fetch("./data/schedules.json", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      showScheduleData(await response.json());
+    } catch { /* A saved browser copy or live check may still be available. */ }
+    try { showScheduleData(JSON.parse(localStorage.getItem(SCHEDULE_CACHE_KEY))); } catch { /* Browser storage may be unavailable. */ }
+  }
   try {
-    const response = await fetch("./data/schedules.json", { cache: "no-store" });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+    let response;
+    try { response = await fetch(LIVE_FEED_URL, { cache: "no-store", signal: controller.signal }); }
+    finally { clearTimeout(timeout); }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    if (!Array.isArray(data.pools) || !Array.isArray(data.sessions)) throw new Error("Invalid schedule data");
-    dataState.data = { ...data, stale: true };
-    if (dataState.day !== "all" && !calendarDates().includes(dataState.day)) dataState.day = "all";
-    $("error").hidden = true;
-    renderStatus(); renderFilters(); renderResults(); renderCoverage();
+    if (!scheduleDataIsValid(data) || data.stale) throw new Error("Collector did not return a fresh check");
+    dataState.refreshFailed = false;
+    showScheduleData(data);
+    try { localStorage.setItem(SCHEDULE_CACHE_KEY, JSON.stringify(data)); } catch { /* Keep schedules for this visit. */ }
   } catch {
-    if (dataState.data) { dataState.data.stale = true; renderStatus(); renderResults(); return; }
-    $("source-status").className = "source-status error-status";
-    $("source-status").replaceChildren(el("span", "status-dot"), el("span", "", "Could not load published schedules"));
-    $("result-count").textContent = "No live data";
-    $("error").hidden = false;
-    const links = $("error-links");
-    const a = el("a", "", "NYC Parks indoor pools ↗");
-    a.href = "https://www.nycgovparks.org/facilities/indoor-pools";
-    a.target = "_blank"; a.rel = "noopener noreferrer"; links.append(a);
-  } finally {
-    // The saved file is a fallback. Ask the public official-source collector on every load.
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60_000);
-      let response;
-      try { response = await fetch(LIVE_FEED_URL, { cache: "no-store", signal: controller.signal }); }
-      finally { clearTimeout(timeout); }
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (!Array.isArray(data.pools) || !Array.isArray(data.sessions) || !data.checked_at) throw new Error("Invalid schedule data");
-      dataState.data = data;
-      $("error").hidden = true;
-      renderStatus(); renderFilters(); renderResults(); renderCoverage();
-    } catch {
-      if (dataState.data) { dataState.data.stale = true; renderStatus(); renderResults(); }
-    } finally { loadingSchedules = false; }
-  }
+    dataState.refreshFailed = true;
+    if (dataState.data) renderStatus();
+    else {
+      $("source-status").className = "source-status error-status";
+      $("source-status").replaceChildren(el("span", "status-dot"), el("span", "", "Could not load published schedules"));
+      $("result-count").textContent = "No schedule data";
+      $("error").hidden = false;
+      const a = el("a", "", "NYC Parks indoor pools ↗");
+      a.href = "https://www.nycgovparks.org/facilities/indoor-pools";
+      a.target = "_blank"; a.rel = "noopener noreferrer";
+      $("error-links").replaceChildren(a);
+    }
+  } finally { loadingSchedules = false; }
 }
 
 $("clear-filters").addEventListener("click", () => {
@@ -306,13 +317,14 @@ let renderedCalendarDate = currentNYCClock().date;
 function refreshClockAndSessions() {
   const clock = currentNYCClock();
   renderCurrentTime(clock);
-  if (clock.date !== renderedCalendarDate) {
+  const dayChanged = clock.date !== renderedCalendarDate;
+  if (dayChanged) {
     renderedCalendarDate = clock.date;
     dataState.day = "all";
     if (dataState.data) { renderStatus(); renderFilters(); }
   }
   if (dataState.data) renderResults(clock);
-  if (Date.now() - lastDataFetchAt >= 20 * 60_000) loadSchedules();
+  if (dayChanged || Date.now() - lastDataFetchAt >= 20 * 60_000) loadSchedules();
 }
 setInterval(refreshClockAndSessions, 60_000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshClockAndSessions(); });
